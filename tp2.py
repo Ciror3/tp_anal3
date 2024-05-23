@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 
 # Ruta de la carpeta que contiene los archivos
-carpeta = '/home/ciror/Desktop/anal3/tp2/data/test'
+carpeta = 'data/test'
 
 # Obtener la lista de archivos en la carpeta
 archivos = os.listdir(carpeta)

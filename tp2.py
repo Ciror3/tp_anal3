@@ -29,13 +29,12 @@ signal_array = {}
 
 i = 0
 for nombre in archivos:
-    if nombre.startswith('0'):  # Verifica si el nombre comienza con el número 0
-        audios_opened[nombre] = wave.open(os.path.join(carpeta, nombre), "rb")
-        sample_freq[nombre] = audios_opened[nombre].getframerate()
-        n_samples[nombre] = audios_opened[nombre].getnframes()
-        signal_wave[nombre] = audios_opened[nombre].readframes(-1)
-        audios_opened[nombre].close()
-        audio_duration[nombre] = n_samples[nombre] / sample_freq[nombre]
-        signal_array[nombre] = np.frombuffer(signal_wave[nombre], dtype=np.int16)
-        plot_waveform(signal_array[nombre], sample_freq[nombre], nombre)
+    audios_opened[nombre] = wave.open(os.path.join(carpeta, nombre), "rb")
+    sample_freq[nombre] = audios_opened[nombre].getframerate()
+    n_samples[nombre] = audios_opened[nombre].getnframes()
+    signal_wave[nombre] = audios_opened[nombre].readframes(-1)
+    audios_opened[nombre].close()
+    audio_duration[nombre] = n_samples[nombre] / sample_freq[nombre]
+    signal_array[nombre] = np.frombuffer(signal_wave[nombre], dtype=np.int16)
+    plot_waveform(signal_array[nombre], sample_freq[nombre], nombre)
 

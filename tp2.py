@@ -39,3 +39,4 @@ for nombre in archivos:
         signal_array[nombre] = np.frombuffer(signal_wave[nombre], dtype=np.int16)
         plot_waveform(signal_array[nombre], sample_freq[nombre], nombre)
 
+ 

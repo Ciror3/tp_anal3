@@ -1,13 +1,12 @@
 import numpy as np
 import wave
 import os
-from scipy.stats import pearsonr
 
 train = 'data/train'
 test = 'data/test'
 # Función para cargar y normalizar los datos de audio
 numbers = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
-def load_and_normalize_audio_data(folder):
+def load_and_normalize_audio_data(folder, fourier):
     archivos = os.listdir(folder)
     normalized_signal_dict = {number: [] for number in numbers}
     
@@ -23,12 +22,21 @@ def load_and_normalize_audio_data(folder):
                 audio_duration = n_samples / sample_freq
                 signal_array = np.frombuffer(signal_wave, dtype=np.int16)
                 
-                # Normalizar la señal
-                max_val = np.max(np.abs(signal_array))
-                normalized_signal = signal_array / max_val
-                
-                # Agregar la señal normalizada al diccionario correspondiente
-                normalized_signal_dict[number].append(normalized_signal)
+                if fourier is True:
+                    # Perform Fourier transform
+                    fft_signal = np.fft.fft(signal_array)
+                    fft_magnitude = np.abs(fft_signal)
+                    max_val = np.max(fft_magnitude)
+                    normalized_signal = fft_magnitude / max_val             
+                    # Add the normalized signal to the corresponding dictionary
+                    normalized_signal_dict[number].append(normalized_signal)
+                else:
+                    # Normalizar la señal
+                    max_val = np.max(np.abs(signal_array))
+                    normalized_signal = signal_array / max_val
+                    
+                    # Agregar la señal normalizada al diccionario correspondiente
+                    normalized_signal_dict[number].append(normalized_signal)
     
     return normalized_signal_dict
 
@@ -55,44 +63,75 @@ def average_normalized_signals(normalized_signal_dict):
     return averaged_signals
 
 # Función para comparar las señales normalizadas con el promedio
-def compare_signals_with_averages(test_folder, averaged_signals):
-    test_signal_dict = load_and_normalize_audio_data(test_folder)
-    avgs = {number: [0 for _ in range(50)] for number in numbers}
-    counter = 0
-    for number, signals in test_signal_dict.items():
-        if number in averaged_signals:
-            average_signal = averaged_signals[number]
-            for signal in signals:
-                for i in range(0, len(signal)):
-                    avgs[number][counter] += np.abs(signal[i]) - np.abs(average_signal[i])   
-                avgs[number][counter] = avgs[number][counter]/len(average_signal)
-                counter += 1
-                if counter == 50:
-                    counter = 0
-    return avgs
+def compare_signals_with_averages(test_folder, averaged_signals,fourier):
+    # Load and normalize the test signals
+    test_signal_dict = load_and_normalize_audio_data(test_folder,fourier)
+    
+    results = {}
+    count = 1
+    # Compare each test signal with the corresponding average signal
+    for number, test_signals in test_signal_dict.items():
+        for _, test_signal in enumerate(test_signals):
+            # Ensure the signals are of the same length for comparison
+            for i in numbers:
+                average_signal = averaged_signals[i]
+                min_length = min(len(test_signal), len(average_signal))
+                test_signal = test_signal[:min_length]
+                average_signal = average_signal[:min_length]
+                
+                # Calculate the similarity (e.g., mean absolute error)
+                error = np.mean(np.abs(test_signal - average_signal))
+                
+                # Store the result in a nested dictionary with unique identifiers for each test signal
+                if f"test_signal_{count}_real_number_{number}" not in results:
+                    results[f"test_signal_{count}_real_number_{number}"] = {}
+                results[f"test_signal_{count}_real_number_{number}"][i] = error
+            count += 1
+    
+    return results
 
-def similarity_score(similarity_dict):
-    similars = 0
-    diff = 0
 
-    for _, simil in similarity_dict.items():
-        for i in range(50):
-            if simil[i] < 0.05:
-                similars += 1
-            else:
-                diff += 1 
-    return similars, diff
-            
+def classifier(similarity_dict):
+    top_three_results = {}
+    
+    for test_signal, errors in similarity_dict.items():
+        # Sort the average signals by error in ascending order
+        sorted_errors = sorted(errors.items(), key=lambda item: item[1])
+        
+        # Get the top three most similar average signals
+        top_three = sorted_errors[:3]
+        # Store the top three results in the new dictionary
+        top_three_results[test_signal] = top_three
+    
+    return top_three_results
 
-normalized_signal_dict = load_and_normalize_audio_data(train)
+def acceptance_rate(tops):
+    simmilarity = 0
+    difference = 0
+    simil_dict = {number:0 for number in numbers}
+    for name, simils in tops.items():
+        if name[-1] is simils[0][0]:
+            simmilarity += 1
+            simil_dict[name[-1]] += 1
+        else:
+            difference += 1
+    return simmilarity,difference,simil_dict
+
+print('Sin Fourier')
+normalized_signal_dict = load_and_normalize_audio_data(train,False)
 # Calcular los promedios de las señales normalizadas
 averaged_signals = average_normalized_signals(normalized_signal_dict)
+similarity_results = compare_signals_with_averages(test, averaged_signals,False)
+tops = classifier(similarity_results)
+simil, diff, simil_dict = acceptance_rate(tops)
+print(f'Porcentaje de señales correctamente predichas: {(simil * 100) / 500}%, Porcentaje de señales incorrectamente predichas: {(diff * 100) / 500}%')
+print(simil_dict)
 
-similarity_results = compare_signals_with_averages(test, averaged_signals)
-simil, diff = similarity_score(similarity_results)
-
-prob_simil = 100*simil/500
-prob_diff = 100*diff/500
-
-print(f"Con un 95% de aprobacion, es igual en {prob_simil}% de las veces y distinto {prob_diff}% de las veces")
-
+print('Con Fourier')
+normalized_signal_dict = load_and_normalize_audio_data(train,True)
+averaged_signals = average_normalized_signals(normalized_signal_dict)
+similarity_results = compare_signals_with_averages(test, averaged_signals,True)
+tops = classifier(similarity_results)
+simil, diff, simil_dict = acceptance_rate(tops)
+print(f'Porcentaje de señales correctamente predichas: {(simil * 100) / 500}%, Porcentaje de señales incorrectamente predichas: {(diff * 100) / 500}%')
+print(simil_dict)

@@ -1,88 +1,64 @@
 import numpy as np
 import wave
 import os
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
+import matplotlib.pyplot as plt
 
 train = 'data/train'
 test = 'data/test'
-# Función para cargar y normalizar los datos de audio
 numbers = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
-def load_and_normalize_audio_data(folder, fourier):
+
+def load_audio_data(folder, fourier):
     archivos = os.listdir(folder)
     normalized_signal_dict = {number: [] for number in numbers}
     
     for nombre in archivos:
         for number in numbers:
             if nombre.startswith(number):
-                # Leer y procesar el archivo de audio
                 audios_opened = wave.open(os.path.join(folder, nombre), "rb")
                 sample_freq = audios_opened.getframerate()
                 n_samples = audios_opened.getnframes()
                 signal_wave = audios_opened.readframes(-1)
                 audios_opened.close()
-                audio_duration = n_samples / sample_freq
                 signal_array = np.frombuffer(signal_wave, dtype=np.int16)
                 
-                if fourier is True:
-                    # Perform Fourier transform
+                if fourier:
                     fft_signal = np.fft.fft(signal_array)
                     fft_magnitude = np.abs(fft_signal)
-                    max_val = np.max(fft_magnitude)
-                    normalized_signal = fft_magnitude / max_val             
-                    # Add the normalized signal to the corresponding dictionary
-                    normalized_signal_dict[number].append(normalized_signal)
+                    normalized_signal_dict[number].append(fft_magnitude)
                 else:
-                    # Normalizar la señal
-                    max_val = np.max(np.abs(signal_array))
-                    normalized_signal = signal_array / max_val
-                    
-                    # Agregar la señal normalizada al diccionario correspondiente
-                    normalized_signal_dict[number].append(normalized_signal)
+                    normalized_signal_dict[number].append(signal_array)
     
     return normalized_signal_dict
 
-# Función para hacer la suma punto a punto y calcular el promedio
 def average_normalized_signals(normalized_signal_dict):
     averaged_signals = {}
     
     for number, signals in normalized_signal_dict.items():
         if signals:
-            # Asegurarse de que todos los arrays tengan la misma longitud
             min_length = min(len(signal) for signal in signals)
             trimmed_signals = [signal[:min_length] for signal in signals]
-            
-            # Convertir la lista de arrays en un array 2D
             signals_array = np.array(trimmed_signals)
-            
-            # Calcular la suma punto a punto y luego el promedio
             sum_signals = np.sum(signals_array, axis=0)
             average_signal = sum_signals / len(signals)
-            
-            # Guardar el promedio en el diccionario
             averaged_signals[number] = average_signal
     
     return averaged_signals
 
-# Función para comparar las señales normalizadas con el promedio
-def compare_signals_with_averages(test_folder, averaged_signals,fourier):
-    # Load and normalize the test signals
-    test_signal_dict = load_and_normalize_audio_data(test_folder,fourier)
+def compare_signals_with_averages(test_folder, averaged_signals, fourier):
+    test_signal_dict = load_audio_data(test_folder, fourier)
     
     results = {}
     count = 1
-    # Compare each test signal with the corresponding average signal
     for number, test_signals in test_signal_dict.items():
         for _, test_signal in enumerate(test_signals):
-            # Ensure the signals are of the same length for comparison
             for i in numbers:
                 average_signal = averaged_signals[i]
                 min_length = min(len(test_signal), len(average_signal))
                 test_signal = test_signal[:min_length]
                 average_signal = average_signal[:min_length]
-                
-                # Calculate the similarity (e.g., mean absolute error)
                 error = np.mean(np.abs(test_signal - average_signal))
                 
-                # Store the result in a nested dictionary with unique identifiers for each test signal
                 if f"test_signal_{count}_real_number_{number}" not in results:
                     results[f"test_signal_{count}_real_number_{number}"] = {}
                 results[f"test_signal_{count}_real_number_{number}"][i] = error
@@ -90,48 +66,61 @@ def compare_signals_with_averages(test_folder, averaged_signals,fourier):
     
     return results
 
-
 def classifier(similarity_dict):
-    top_three_results = {}
+    predictions = {}
     
     for test_signal, errors in similarity_dict.items():
-        # Sort the average signals by error in ascending order
         sorted_errors = sorted(errors.items(), key=lambda item: item[1])
-        
-        # Get the top three most similar average signals
-        top_three = sorted_errors[:3]
-        # Store the top three results in the new dictionary
-        top_three_results[test_signal] = top_three
+        predicted_label = sorted_errors[0][0]
+        true_label = test_signal.split('_')[-1]
+        predictions[test_signal] = (true_label, predicted_label)
     
-    return top_three_results
+    return predictions
 
-def acceptance_rate(tops):
-    simmilarity = 0
-    difference = 0
-    simil_dict = {number:0 for number in numbers}
-    for name, simils in tops.items():
-        if name[-1] is simils[0][0]:
-            simmilarity += 1
-            simil_dict[name[-1]] += 1
-        else:
-            difference += 1
-    return simmilarity,difference,simil_dict
+def acceptance_rate(predictions):
+    correct = 0
+    total = len(predictions)
+    simil_dict = {number: 0 for number in numbers}
+    
+    for _, (true_label, predicted_label) in predictions.items():
+        if true_label == predicted_label:
+            correct += 1
+            simil_dict[true_label] += 1
+    
+    return correct, total - correct, simil_dict
 
+def generate_confusion_matrix(predictions):
+    true_labels = [true_label for true_label, _ in predictions.values()]
+    predicted_labels = [predicted_label for _, predicted_label in predictions.values()]
+    conf_matrix = confusion_matrix(true_labels, predicted_labels, labels=numbers)
+    class_report = classification_report(true_labels, predicted_labels, labels=numbers, target_names=numbers)
+    return conf_matrix, class_report, true_labels, predicted_labels
+
+# Main process
 print('Sin Fourier')
-normalized_signal_dict = load_and_normalize_audio_data(train,False)
-# Calcular los promedios de las señales normalizadas
+normalized_signal_dict = load_audio_data(train, False)
 averaged_signals = average_normalized_signals(normalized_signal_dict)
-similarity_results = compare_signals_with_averages(test, averaged_signals,False)
-tops = classifier(similarity_results)
-simil, diff, simil_dict = acceptance_rate(tops)
+similarity_results = compare_signals_with_averages(test, averaged_signals, False)
+predictions = classifier(similarity_results)
+simil, diff, simil_dict = acceptance_rate(predictions)
+conf_matrix, class_report, true_labels, predicted_labels = generate_confusion_matrix(predictions)
 print(f'Porcentaje de señales correctamente predichas: {(simil * 100) / 500}%, Porcentaje de señales incorrectamente predichas: {(diff * 100) / 500}%')
-print(simil_dict)
+print("Classification Report (Sin Fourier):")
+print(class_report)
+ConfusionMatrixDisplay(confusion_matrix(true_labels, predicted_labels, labels=numbers), display_labels=numbers).plot()
+plt.title('Confusion Matrix (Sin Fourier)')
+plt.show()
 
 print('Con Fourier')
-normalized_signal_dict = load_and_normalize_audio_data(train,True)
+normalized_signal_dict = load_audio_data(train, True)
 averaged_signals = average_normalized_signals(normalized_signal_dict)
-similarity_results = compare_signals_with_averages(test, averaged_signals,True)
-tops = classifier(similarity_results)
-simil, diff, simil_dict = acceptance_rate(tops)
+similarity_results = compare_signals_with_averages(test, averaged_signals, True)
+predictions = classifier(similarity_results)
+simil, diff, simil_dict = acceptance_rate(predictions)
+conf_matrix, class_report, true_labels, predicted_labels = generate_confusion_matrix(predictions)
 print(f'Porcentaje de señales correctamente predichas: {(simil * 100) / 500}%, Porcentaje de señales incorrectamente predichas: {(diff * 100) / 500}%')
-print(simil_dict)
+print("Classification Report (Con Fourier):")
+print(class_report)
+ConfusionMatrixDisplay(confusion_matrix(true_labels, predicted_labels, labels=numbers), display_labels=numbers).plot()
+plt.title('Confusion Matrix (Con Fourier)')
+plt.show()

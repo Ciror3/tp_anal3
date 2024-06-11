@@ -1,5 +1,6 @@
 import numpy as np
 import wave
+import librosa
 import os
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
 import matplotlib.pyplot as plt
@@ -8,33 +9,35 @@ train = 'data/train'
 test = 'data/test'
 numbers = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 
-def load_audio_data(folder, fourier):
+def load_audio_data(folder, mode):
     archivos = os.listdir(folder)
-    normalized_signal_dict = {number: [] for number in numbers}
+    signal_dict = {number: [] for number in numbers}
     
     for nombre in archivos:
         for number in numbers:
             if nombre.startswith(number):
                 audios_opened = wave.open(os.path.join(folder, nombre), "rb")
-                sample_freq = audios_opened.getframerate()
-                n_samples = audios_opened.getnframes()
+                sample_rate = audios_opened.getframerate()
                 signal_wave = audios_opened.readframes(-1)
                 audios_opened.close()
                 signal_array = np.frombuffer(signal_wave, dtype=np.int16)
                 
-                if fourier:
+                if mode == 'fourier':
                     fft_signal = np.fft.fft(signal_array)
                     fft_magnitude = np.abs(fft_signal)
-                    normalized_signal_dict[number].append(fft_magnitude)
+                    signal_dict[number].append(fft_magnitude)
+                elif mode == 'mfcc':
+                    mfccs = librosa.feature.mfcc(y=signal_array.astype(float), sr=sample_rate, n_mfcc=13)
+                    signal_dict[number].append(mfccs.mean(axis=1))
                 else:
-                    normalized_signal_dict[number].append(signal_array)
+                    signal_dict[number].append(signal_array)
     
-    return normalized_signal_dict
+    return signal_dict
 
-def average_normalized_signals(normalized_signal_dict):
+def average_signals(signal_dict):
     averaged_signals = {}
     
-    for number, signals in normalized_signal_dict.items():
+    for number, signals in signal_dict.items():
         if signals:
             min_length = min(len(signal) for signal in signals)
             trimmed_signals = [signal[:min_length] for signal in signals]
@@ -51,13 +54,13 @@ def compare_signals_with_averages(test_folder, averaged_signals, fourier):
     results = {}
     count = 1
     for number, test_signals in test_signal_dict.items():
-        for _, test_signal in enumerate(test_signals):
+        for test_signal in test_signals:
             for i in numbers:
                 average_signal = averaged_signals[i]
                 min_length = min(len(test_signal), len(average_signal))
                 test_signal = test_signal[:min_length]
                 average_signal = average_signal[:min_length]
-                error = np.mean(np.abs(test_signal - average_signal))
+                error = np.mean(np.abs((test_signal - average_signal)))
                 
                 if f"test_signal_{count}_real_number_{number}" not in results:
                     results[f"test_signal_{count}_real_number_{number}"] = {}
@@ -96,31 +99,15 @@ def generate_confusion_matrix(predictions):
     class_report = classification_report(true_labels, predicted_labels, labels=numbers, target_names=numbers)
     return conf_matrix, class_report, true_labels, predicted_labels
 
-# Main process
-print('Sin Fourier')
-normalized_signal_dict = load_audio_data(train, False)
-averaged_signals = average_normalized_signals(normalized_signal_dict)
-similarity_results = compare_signals_with_averages(test, averaged_signals, False)
-predictions = classifier(similarity_results)
-simil, diff, simil_dict = acceptance_rate(predictions)
-conf_matrix, class_report, true_labels, predicted_labels = generate_confusion_matrix(predictions)
-print(f'Porcentaje de señales correctamente predichas: {(simil * 100) / 500}%, Porcentaje de señales incorrectamente predichas: {(diff * 100) / 500}%')
-print("Classification Report (Sin Fourier):")
-print(class_report)
-ConfusionMatrixDisplay(confusion_matrix(true_labels, predicted_labels, labels=numbers), display_labels=numbers).plot()
-plt.title('Confusion Matrix (Sin Fourier)')
-plt.show()
-
-print('Con Fourier')
-normalized_signal_dict = load_audio_data(train, True)
-averaged_signals = average_normalized_signals(normalized_signal_dict)
-similarity_results = compare_signals_with_averages(test, averaged_signals, True)
-predictions = classifier(similarity_results)
-simil, diff, simil_dict = acceptance_rate(predictions)
-conf_matrix, class_report, true_labels, predicted_labels = generate_confusion_matrix(predictions)
-print(f'Porcentaje de señales correctamente predichas: {(simil * 100) / 500}%, Porcentaje de señales incorrectamente predichas: {(diff * 100) / 500}%')
-print("Classification Report (Con Fourier):")
-print(class_report)
-ConfusionMatrixDisplay(confusion_matrix(true_labels, predicted_labels, labels=numbers), display_labels=numbers).plot()
-plt.title('Confusion Matrix (Con Fourier)')
-plt.show()
+modes = ['Sin Fourier', 'fourier', 'mfcc']
+for mode in modes:
+    print(f'\n{mode}')
+    normalized_signal_dict = load_audio_data(train, mode)
+    averaged_signals = average_signals(normalized_signal_dict)
+    similarity_results = compare_signals_with_averages(test, averaged_signals, mode.lower().replace(' ', ''))
+    predictions = classifier(similarity_results)
+    simil, diff, simil_dict = acceptance_rate(predictions)
+    conf_matrix, class_report, true_labels, predicted_labels = generate_confusion_matrix(predictions)
+    print(f'Porcentaje de señales correctamente predichas: {(simil * 100) / 500}%, Porcentaje de señales incorrectamente predichas: {(diff * 100) / 500}%')
+    ConfusionMatrixDisplay(confusion_matrix(true_labels, predicted_labels, labels=numbers), display_labels=numbers).plot()
+    plt.show()

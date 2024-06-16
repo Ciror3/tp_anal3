@@ -26,15 +26,21 @@ class AudioMNISTDataset(Dataset):
         
         # Get audio data and labels
         audio, fs = sf.read(audio_paths[idx])
-        label = audio_paths[idx].split('/')[-1].split('_')[0]
+        label = audio_paths[idx].split('/')[-1].split('_')[0].split('\\')[1]
         # Extract features
         if self.feature == 'raw_waveform':
             # insertar código acá
-            # feat = ...
+            feat = torch.from_numpy(audio)
         elif self.feature == 'audio_spectrum':
             feat = self.dft(audio,fs)
         elif self.feature == 'mfcc':
             feat = self.mfcc(audio, fs)
+        
+        #Agrego
+        feat =  feat.view(-1)
+        if feat.size(0) == 4000:
+            feat = torch.cat((feat, torch.ones(1)))
+        feat = feat.type(torch.float)
         
         feat = feat.type(torch.float)
         label = torch.tensor(int(label), dtype=torch.long)
@@ -51,8 +57,10 @@ class AudioMNISTDataset(Dataset):
         Returns:
             audio_f (Tensor): spectral representation of the audio data.
         """
-        # insertar código
-        return
+        audio_f = np.fft.rfft(audio) #Transformada de Fourier devuelve parte no negativa
+        audio_f = np.abs(audio_f) #/ np.max(np.abs(audio_f)) #Normalizo
+        audio_f = torch.from_numpy(audio_f)
+        return audio_f
 
     @staticmethod
     def mfcc(audio, fs):
@@ -65,5 +73,7 @@ class AudioMNISTDataset(Dataset):
         Returns:
             mfcc (Tensor): MFCC of the input audio file.
         """
-        # insertar código
-        return
+        mfcc = lb.feature.mfcc(y=audio, sr=fs, n_mfcc=20)
+        mfcc = torch.tensor(mfcc, dtype=torch.float)
+
+        return mfcc

@@ -83,7 +83,7 @@ class Trainer():
             if val_loss > last_loss:
                 trigger_times += 1
             else:
-            	trigger_times = 0
+                trigger_times = 0
             if trigger_times >= patience:
                 print('Early Stopping!')
                 torch.save(best_state, self.save_root_path+f'/{self.model_name}/best_model.pt')

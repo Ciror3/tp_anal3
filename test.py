@@ -1,4 +1,3 @@
-
 import sys
 
 sys.path.insert(1, './configs')
@@ -24,7 +23,7 @@ input_shape = c.network['input_shape']
 if c.dataset['feature'] == 'mfcc':
     mod = model.NeuralNet_mfcc(input_shape)
 else:
-    mod = model.NeuralNet2(input_shape)                                                
+    mod = model.NeuralNet(input_shape)                                                
 mod.to(c.device)     
 
 weigths_list = glob.glob(os.path.join(c.save_path+f'/{c.model_name}', "*"))

@@ -2,6 +2,9 @@ import numpy as np
 import wave
 import matplotlib.pyplot as plt
 import os
+import torch
+
+print(torch.__version__)
 
 # Ruta de la carpeta que contiene los archivos
 carpeta = 'data/test'
